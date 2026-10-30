@@ -1,18 +1,22 @@
 'use strict';
 // Self-updater for the ad-hoc signed build. Electron's autoUpdater (Squirrel.Mac) refuses
-// apps without a Developer ID, and the repo is private, so this goes through the GitHub CLI
-// that the installer already set up and logged in, and swaps the .app bundle itself.
+// apps without a Developer ID, so this asks the public GitHub API for the latest release,
+// downloads its zip over HTTPS, checks GitHub's SHA-256 for it, and swaps the .app bundle itself.
 const { app, dialog } = require('electron');
 const { execFile, spawn } = require('child_process');
+const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const { Readable } = require('stream');
+const { pipeline } = require('stream/promises');
 
 const REPO = 'mayzernator/perforation-studio';
+const API = `https://api.github.com/repos/${REPO}`;
+// the zip must come from this repo's releases (GitHub then redirects to its own download host)
+const ASSET_PREFIX = `https://github.com/${REPO}/releases/download/`;
 const FIRST_CHECK_MS = 10 * 1000;
 const CHECK_EVERY_MS = 4 * 60 * 60 * 1000;
-// apps opened from Finder get a bare PATH, so look where Homebrew puts gh
-const PATH_EXTRA = ['/opt/homebrew/bin', '/usr/local/bin'];
 
 let build = {};
 try { build = JSON.parse(fs.readFileSync(path.join(__dirname, 'app', 'build.json'), 'utf8')); } catch {}
@@ -27,18 +31,11 @@ const short = (sha) => (sha ? String(sha).slice(0, 7) : 'unknown');
 const setState = (s) => { state = s; onChange(); };
 
 function run(cmd, args, timeout = 60 * 1000) {
-  const env = { ...process.env, PATH: [...PATH_EXTRA, process.env.PATH || '/usr/bin:/bin'].join(':') };
   return new Promise((resolve, reject) => {
-    execFile(cmd, args, { env, timeout, maxBuffer: 4 * 1024 * 1024 }, (err, stdout, stderr) => {
+    execFile(cmd, args, { timeout, maxBuffer: 4 * 1024 * 1024 }, (err, stdout, stderr) => {
       if (err) { err.stderr = String(stderr || '').trim(); reject(err); } else resolve(String(stdout).trim());
     });
   });
-}
-
-function findGh() {
-  const dirs = [...PATH_EXTRA, ...String(process.env.PATH || '').split(':')];
-  for (const d of dirs) { const p = path.join(d, 'gh'); try { fs.accessSync(p, fs.constants.X_OK); return p; } catch {} }
-  return null;
 }
 
 // the running .app bundle: .../Perforation Studio.app/Contents/MacOS/Perforation Studio
@@ -46,33 +43,56 @@ const bundlePath = () => path.resolve(path.dirname(process.execPath), '..', '..'
 
 class UpdateError extends Error {}
 
-async function latestCommit(gh) {
+async function api(p) {
+  let res;
   try {
-    const rel = JSON.parse(await run(gh, ['release', 'view', 'latest', '-R', REPO, '--json', 'targetCommitish,body']));
-    if (/^[0-9a-f]{40}$/.test(rel.targetCommitish)) return rel.targetCommitish;
-    const m = /\b([0-9a-f]{7,40})\b/.exec(rel.body || '');
-    if (m) return m[1];
-    throw new UpdateError('The latest release doesn’t say which commit it was built from.');
-  } catch (err) {
-    if (err instanceof UpdateError) throw err;
-    if (/auth login|not logged|authentication/i.test(err.stderr || '')) throw new UpdateError('The GitHub CLI isn’t logged in. Run “gh auth login” in Terminal, or double-click “Install Perforation Studio.command” once.');
-    if (/release not found/i.test(err.stderr || '')) throw new UpdateError('No release is published right now. A new build may be uploading; try again in a few minutes.');
-    throw new UpdateError(`Couldn’t reach GitHub: ${err.stderr || err.message}`);
-  }
+    res = await fetch(`${API}/${p}`, {
+      headers: { Accept: 'application/vnd.github+json', 'User-Agent': `PerforationStudio/${app.getVersion()}` },
+      signal: AbortSignal.timeout(60 * 1000),
+    });
+  } catch (err) { throw new UpdateError(`Couldn’t reach GitHub: ${err.message}`); }
+  if (res.ok) return res.json();
+  if (res.status === 404) return null;
+  if ((res.status === 403 || res.status === 429) && res.headers.get('x-ratelimit-remaining') === '0') throw new UpdateError('GitHub’s rate limit for this network is used up. Try again in an hour.');
+  throw new UpdateError(`GitHub answered ${res.status} ${res.statusText}.`);
+}
+
+// { commit, asset } for the rolling "latest" release
+async function latestRelease() {
+  const rel = await api('releases/tags/latest');
+  if (!rel) throw new UpdateError('No release is published right now. A new build may be uploading; try again in a few minutes.');
+  const asset = (rel.assets || []).find((a) => a.name.endsWith('.zip'));
+  if (!asset) throw new UpdateError('The latest release has no app zip.');
+  if (/^[0-9a-f]{40}$/.test(rel.target_commitish)) return { commit: rel.target_commitish, asset };
+  const m = /\b([0-9a-f]{7,40})\b/.exec(rel.body || '');
+  if (m) return { commit: m[1], asset };
+  throw new UpdateError('The latest release doesn’t say which commit it was built from.');
 }
 
 // 'ahead' (newer build available) | 'identical' | 'behind' | 'diverged' | 'unknown'
-async function compare(gh, remote) {
+async function compare(remote) {
   if (!build.commit) return 'ahead';
-  try { return await run(gh, ['api', `repos/${REPO}/compare/${build.commit}...${remote}`, '--jq', '.status']); } catch { return 'unknown'; }
+  try { return (await api(`compare/${build.commit}...${remote}`))?.status || 'unknown'; } catch { return 'unknown'; }
 }
 
-async function download(gh, commit) {
+async function fetchFile(url, dest, expected) {
+  if (!url.startsWith(ASSET_PREFIX)) throw new UpdateError('The release zip isn’t hosted on this repository’s releases.');
+  const res = await fetch(url, { headers: { 'User-Agent': `PerforationStudio/${app.getVersion()}` }, signal: AbortSignal.timeout(10 * 60 * 1000) });
+  if (!res.ok || !res.body) throw new UpdateError(`Download failed: ${res.status} ${res.statusText}`);
+  const hash = crypto.createHash('sha256');
+  const body = Readable.fromWeb(res.body);
+  body.on('data', (chunk) => hash.update(chunk));
+  await pipeline(body, fs.createWriteStream(dest));
+  const got = hash.digest('hex');
+  if (expected && got !== expected) throw new UpdateError('The downloaded zip doesn’t match the checksum GitHub published for it, so it wasn’t installed.');
+}
+
+async function download({ commit, asset }) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'perf-update-'));
   try {
-    await run(gh, ['release', 'download', 'latest', '-R', REPO, '-p', '*.zip', '-D', dir], 10 * 60 * 1000);
-    const zip = fs.readdirSync(dir).find((f) => f.endsWith('.zip'));
-    if (!zip) throw new UpdateError('The release has no app zip.');
+    const zip = 'update.zip';
+    const digest = /^sha256:([0-9a-f]{64})$/.exec(asset.digest || '');
+    await fetchFile(asset.browser_download_url, path.join(dir, zip), digest && digest[1]);
     await run('/usr/bin/ditto', ['-x', '-k', path.join(dir, zip), dir], 5 * 60 * 1000);
     const bundle = fs.readdirSync(dir).find((f) => f.endsWith('.app'));
     if (!bundle) throw new UpdateError('The downloaded zip doesn’t contain the app.');
@@ -97,13 +117,11 @@ async function check({ manual }) {
   const tell = (o) => manual && dialog.showMessageBox(win, { type: 'info', buttons: ['OK'], ...o });
   if (!app.isPackaged) return tell({ message: 'Updates only work in the installed app.', detail: 'You’re running from source.' });
   if (!canReplaceBundle()) return tell({ type: 'warning', message: 'Perforation Studio can’t update itself from where it is.', detail: `Move it to Applications, or update with “Install Perforation Studio.command”.\n\n${bundlePath()}` });
-  const gh = findGh();
-  if (!gh) return tell({ type: 'warning', message: 'Updates need the GitHub CLI.', detail: 'Double-click “Install Perforation Studio.command” once to set it up.' });
 
   setState('checking');
   try {
-    const remote = await latestCommit(gh);
-    const status = await compare(gh, remote);
+    const latest = await latestRelease(), remote = latest.commit;
+    const status = await compare(remote);
     if (status !== 'ahead') {
       setState('idle');
       const detail = {
@@ -115,7 +133,7 @@ async function check({ manual }) {
       return tell({ message: status === 'identical' ? 'Perforation Studio is up to date.' : 'No update installed.', detail });
     }
     setState('downloading');
-    staged = await download(gh, remote);
+    staged = await download(latest);
     setState('ready');
     promptRestart();
   } catch (err) {
