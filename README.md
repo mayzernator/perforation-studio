@@ -4,13 +4,7 @@ Parametric perforation pattern generator (grilles, vents, halftones, wrapped cyl
 
 ## Install on a Mac
 
-Needs the GitHub CLI, logged in (`brew install gh && gh auth login`), since the repo is private. Then from a clone:
-
-```
-./install.sh
-```
-
-Run it again to update. Every push to `main` builds a new release automatically (GitHub Actions, ~5 min).
+Double-click **Install Perforation Studio.command** (in this repo, or downloaded on its own). The first time, it installs the GitHub CLI if needed and asks you to log in to GitHub once, since the repo is private. Double-click it again any time to update. Every push to `main` builds a new release automatically (GitHub Actions, ~5 min).
 
 ## Quick edit loop
 
