@@ -1,5 +1,5 @@
 'use strict';
-const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, nativeTheme, shell } = require('electron');
 const path = require('path');
 const fs = require('fs/promises');
 const updater = require('./updater');
@@ -20,7 +20,7 @@ function createWindow() {
     title: 'Perforation Studio',
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 14, y: 16 },
-    backgroundColor: '#101317',
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#262421' : '#f5f1e8',
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),

@@ -16,8 +16,7 @@ presets = open(os.path.join(SRC, 'presets.js')).read()
 
 # fonts: bundled woff2 instead of Google Fonts
 faces = [
-    ('Barlow', 'barlow', [400, 500, 600]),
-    ('Barlow Semi Condensed', 'barlow-semi-condensed', [500, 600, 700]),
+    ('Nunito', 'nunito', [400, 500, 600, 700, 800]),
     ('JetBrains Mono', 'jetbrains-mono', [400, 500]),
 ]
 css = []
