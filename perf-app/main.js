@@ -2,6 +2,7 @@
 const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron');
 const path = require('path');
 const fs = require('fs/promises');
+const updater = require('./updater');
 
 let win = null;
 let dirty = false;
@@ -46,6 +47,7 @@ function createWindow() {
     });
     if (r === 0) send('save-and-close');
     else if (r === 1) { forceClose = true; win.close(); }
+    else updater.cancelRelaunch();
   });
   win.on('closed', () => { win = null; rendererReady = false; });
 }
@@ -116,7 +118,19 @@ app.on('open-file', (e, p) => {
 function buildMenu() {
   const c = (cmd) => () => send(cmd);
   const template = [
-    { role: 'appMenu' },
+    {
+      label: app.name,
+      submenu: [
+        { role: 'about' },
+        updater.menuItem(),
+        { type: 'separator' },
+        { role: 'services' },
+        { type: 'separator' },
+        { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit' },
+      ],
+    },
     {
       label: 'File',
       submenu: [
@@ -164,6 +178,10 @@ function buildMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
-app.whenReady().then(() => { buildMenu(); createWindow(); });
+app.whenReady().then(() => {
+  buildMenu();
+  createWindow();
+  updater.start({ getWindow: () => win, onChange: buildMenu });
+});
 app.on('window-all-closed', () => app.quit());
 app.on('activate', () => { if (!win) createWindow(); });

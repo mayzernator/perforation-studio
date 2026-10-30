@@ -4,7 +4,11 @@ Parametric perforation pattern generator (grilles, vents, halftones, wrapped cyl
 
 ## Install on a Mac
 
-Double-click **Install Perforation Studio.command** (in this repo, or downloaded on its own). The first time, it installs the GitHub CLI if needed and asks you to log in to GitHub once, since the repo is private. Double-click it again any time to update. Every push to `main` builds a new release automatically (GitHub Actions, ~5 min).
+Double-click **Install Perforation Studio.command** (in this repo, or downloaded on its own). The first time, it installs the GitHub CLI if needed and asks you to log in to GitHub once, since the repo is private. Double-click it again any time to reinstall the latest build.
+
+## Updates
+
+Every push to `main` builds a new release automatically (GitHub Actions, ~5 min). The app checks for it on launch and every 4 hours, downloads it in the background, and asks to restart; choose Later and it installs when you quit. **Perforation Studio → Check for Updates…** checks right away. It uses the GitHub CLI the installer set up, and only replaces itself with a build that is ahead of its own commit on `main` (About shows which build you have).
 
 ## Quick edit loop
 
@@ -14,7 +18,7 @@ Double-click **Install Perforation Studio.command** (in this repo, or downloaded
 ## Layout
 
 - `perf/`: the editor itself. `core.js` is the pattern engine and DXF/SVG writer, `presets.js` holds the presets, `ui.html` is the interface.
-- `perf-app/`: the Mac app wrapper (Electron). `main.js` handles the window, menus and file dialogs. `preload.js` is the only bridge to the page. `build-app.py` assembles an offline page with local fonts and three.js.
+- `perf-app/`: the Mac app wrapper (Electron). `main.js` handles the window, menus and file dialogs. `updater.js` checks for, downloads and installs new releases. `preload.js` is the only bridge to the page. `build-app.py` assembles an offline page with local fonts and three.js.
 
 ## Build the Mac app (on a Mac or Linux)
 

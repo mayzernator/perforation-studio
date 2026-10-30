@@ -18,6 +18,6 @@ jobs:
       # one rolling "latest" release, replaced on every push to main
       - run: |
           gh release delete latest --yes --cleanup-tag || true
-          gh release create latest perf-app/dist/*.zip --title "Latest build" --notes "Built from ${GITHUB_SHA::7}"
+          gh release create latest perf-app/dist/*.zip --target "$GITHUB_SHA" --title "Latest build" --notes "Built from $GITHUB_SHA"
         env:
           GH_TOKEN: ${{ github.token }}

@@ -1,5 +1,5 @@
 """Assemble the offline app page from the shared editor sources in ../perf."""
-import os, re, shutil
+import json, os, re, shutil, subprocess
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.join(ROOT, '..', 'perf')
@@ -43,3 +43,11 @@ page = ('<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
         '<style>' + ''.join(css) + '</style>\n</head>\n<body>\n' + ui + '\n</body>\n</html>\n')
 open(os.path.join(OUT, 'index.html'), 'w').write(page)
 print('app/index.html', len(page), 'bytes;', len(css), 'font faces; three.js bundled')
+
+# which commit this build came from, so the app can tell whether a newer release exists
+def git(*args):
+    try: return subprocess.run(['git', *args], cwd=ROOT, capture_output=True, text=True, check=True).stdout.strip()
+    except (OSError, subprocess.CalledProcessError): return ''
+build = {'commit': git('rev-parse', 'HEAD'), 'dirty': bool(git('status', '--porcelain', '--', '..'))}
+json.dump(build, open(os.path.join(OUT, 'build.json'), 'w'))
+print('app/build.json', build)
