@@ -4,8 +4,8 @@
   "version": "1.0.0",
   "description": "Parametric perforation pattern generator with DXF export",
   "main": "main.js",
-  "author": "May",
-  "license": "UNLICENSED",
+  "author": "mayzernator",
+  "license": "MIT",
   "scripts": {
     "start": "electron .",
     "dist": "python3 build-app.py && electron-builder --mac zip --arm64 --publish never",
@@ -14,8 +14,8 @@
     "install-app": "./install-local.sh"
   },
   "devDependencies": {
-    "electron": "33.4.11",
-    "electron-builder": "26.0.12"
+    "electron": "45.1.0",
+    "electron-builder": "26.18.0"
   },
   "build": {
     "appId": "com.may.perforationstudio",
@@ -33,7 +33,7 @@
         "zip"
       ],
       "identity": null,
-      "artifactName": "Perforation-Studio-${version}-mac-arm64.${ext}"
+      "artifactName": "Perforation-Studio-mac-arm64.${ext}"
     },
     "fileAssociations": [
       {

@@ -28,6 +28,12 @@ for family, pkg, weights in faces:
         css.append(f"@font-face{{font-family:'{family}';font-style:normal;font-weight:{w};font-display:block;src:url(fonts/{fn}) format('woff2')}}")
 shutil.copy(os.path.join(NM, 'three', 'build', 'three.min.js'), os.path.join(OUT, 'vendor', 'three.min.js'))
 
+# third-party licences travel with the app (OFL and MIT both require it)
+os.makedirs(os.path.join(OUT, 'licenses'))
+for pkg in ['@fontsource/barlow', '@fontsource/barlow-semi-condensed', '@fontsource/jetbrains-mono', 'three']:
+    shutil.copy(os.path.join(NM, pkg, 'LICENSE'), os.path.join(OUT, 'licenses', pkg.split('/')[-1] + '-LICENSE.txt'))
+shutil.copy(os.path.join(ROOT, '..', 'LICENSE'), os.path.join(OUT, 'licenses', 'perforation-studio-LICENSE.txt'))
+
 head_remote = re.compile(r'<link rel="preconnect"[^>]*>\n|<link rel="stylesheet" href="https://fonts\.googleapis\.com[^>]*>\n|<script src="https://cdnjs\.cloudflare\.com/ajax/libs/jszip[^>]*></script>\n')
 ui, n = head_remote.subn('', ui)
 assert n == 4, n
