@@ -1,0 +1,999 @@
+<title>Perforation Studio</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+/* Layout: tool shell. Header strip with presets, plate/holes toggle and export; control column left; live sheet preview right with a fixed-height stats rail and floating, dismissible warnings above it. */
+:root{
+  --bg:#e6e9ed; --surface:#f6f7f9; --ink:#15191e; --muted:#5b6571; --line:#cfd5dc;
+  --accent:#1e48c8; --accent-ink:#ffffff; --accent-soft:#dfe6fb;
+  --sheet:#b8c0c9; --sheet-edge:#7c8794; --hole:#f6f7f9; --other:#8a94a0;
+  --warn:#9a5600; --warn-soft:#fbf0e0; --bad:#b3332a; --bad-soft:#fbe6e4; --ok:#2c7448;
+  --shadow:0 6px 24px rgba(20,25,30,.16);
+  --f-display:'Barlow Semi Condensed','Arial Narrow',system-ui,sans-serif;
+  --f-body:'Barlow',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --f-mono:'JetBrains Mono',ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#101317; --surface:#181c21; --ink:#e3e7ec; --muted:#8c96a2; --line:#2a3138;
+    --accent:#7896ff; --accent-ink:#0b1020; --accent-soft:#1d2645;
+    --sheet:#59636d; --sheet-edge:#8f9aa6; --hole:#181c21; --other:#76818d;
+    --warn:#e0a24a; --warn-soft:#2c2416; --bad:#ff7b6e; --bad-soft:#331c1a; --ok:#6fcf93;
+    --shadow:0 6px 24px rgba(0,0,0,.5); color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#101317; --surface:#181c21; --ink:#e3e7ec; --muted:#8c96a2; --line:#2a3138;
+  --accent:#7896ff; --accent-ink:#0b1020; --accent-soft:#1d2645;
+  --sheet:#59636d; --sheet-edge:#8f9aa6; --hole:#181c21; --other:#76818d;
+  --warn:#e0a24a; --warn-soft:#2c2416; --bad:#ff7b6e; --bad-soft:#331c1a; --ok:#6fcf93;
+  --shadow:0 6px 24px rgba(0,0,0,.5); color-scheme:dark;
+}
+[hidden]{display:none!important}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:14px;line-height:1.35}
+*,*::before,*::after{box-sizing:border-box}
+.app{height:100%;display:grid;grid-template-rows:auto minmax(0,1fr);gap:12px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:12px}
+header{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px}
+.brand{display:flex;align-items:baseline;gap:10px;margin-right:auto;min-width:0}
+.brand h1{font-family:var(--f-display);font-weight:700;font-size:21px;letter-spacing:.04em;text-transform:uppercase;margin:0;white-space:nowrap}
+.brand span{color:var(--muted);font-size:13px}
+.tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.main{display:grid;grid-template-columns:304px minmax(0,1fr);gap:12px;min-height:0}
+aside{overflow:auto;background:var(--surface);border:1px solid var(--line);border-radius:6px;min-height:0}
+.grp{padding:12px 14px 14px;border-bottom:1px solid var(--line);display:grid;gap:11px}
+.grp:last-child{border-bottom:0}
+.grp h2{font-family:var(--f-display);font-size:12.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0}
+.ctl{display:grid;grid-template-columns:minmax(0,1fr) 78px;gap:5px 10px;align-items:center}
+.ctl > label{grid-column:1/-1;font-size:13px;font-weight:500}
+.lh{grid-column:1/-1;display:flex;align-items:baseline;gap:2px;min-width:0}
+.nm{border:0;background:none;padding:0;font:500 13px var(--f-body);color:var(--ink);cursor:pointer;text-align:left;white-space:normal;border-radius:3px}
+.nm:hover{color:var(--accent)}
+.nm.mod{text-decoration:underline dotted var(--muted);text-decoration-thickness:1.5px;text-underline-offset:3px}
+.cu{margin-left:auto;border:0;background:none;padding:0 3px;color:var(--muted);font-size:15px;line-height:1;flex:none}
+.cu:hover{color:var(--accent)}
+.ctl.chk{grid-template-columns:auto minmax(0,1fr);gap:8px;align-items:center}
+.ctl.chk .lh{grid-column:auto}
+.ctl.sel{grid-template-columns:1fr}
+.unit{color:var(--muted);font-family:var(--f-mono);font-size:11px;margin-left:4px;font-weight:400}
+input[type=range]{width:100%;accent-color:var(--accent);margin:0}
+input[type=number],select{width:100%;font:500 12.5px var(--f-mono);color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:5px 6px;font-variant-numeric:tabular-nums}
+select{font-family:var(--f-body);font-size:13.5px}
+input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px;margin:0;flex:none}
+input[type=file]{font-size:12.5px;max-width:100%;color:var(--muted)}
+.hint{font-size:12.5px;color:var(--muted);margin:0}
+button{font:600 13px var(--f-body);border-radius:5px;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:7px 12px;cursor:pointer;white-space:nowrap}
+button:hover{border-color:var(--sheet-edge)}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+button.primary:hover{filter:brightness(1.08)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.tools select{width:auto;min-width:200px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:5px;overflow:hidden}
+.seg button{border:0;border-radius:0;background:var(--surface);color:var(--muted)}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--accent-soft);color:var(--ink)}
+.seg button:disabled{opacity:.45;cursor:default}
+.hist button{color:var(--ink)}
+
+/* gradient controller list */
+.glist{display:grid;gap:6px}
+.grow{display:flex;gap:6px;align-items:stretch}
+.gsel{flex:1;min-width:0;display:flex;align-items:center;gap:8px;text-align:left;background:var(--bg);font-weight:500;padding:6px 9px}
+.gsel[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
+.gnum{font:600 11px var(--f-mono);width:18px;height:18px;border-radius:50%;display:inline-grid;place-items:center;background:var(--other);color:var(--surface);flex:none}
+.gsel[aria-pressed="true"] .gnum{background:var(--accent);color:var(--accent-ink)}
+.gsel small{margin-left:auto;color:var(--muted);font:400 11px var(--f-mono);overflow:hidden;text-overflow:ellipsis}
+.gx{padding:0 10px;color:var(--muted);font-size:16px;line-height:1;background:var(--bg)}
+.gx:hover{color:var(--bad)}
+.gadd{display:flex;gap:6px}
+.gadd button{flex:1;padding:6px 6px;font-size:12.5px}
+.gedit{display:grid;gap:11px;padding:11px 11px 12px;border:1px solid var(--line);border-radius:5px;background:var(--bg)}
+.gedit input[type=number],.gedit select{background:var(--surface)}
+.gedit .ttl{font-size:12px;color:var(--muted);margin:0;font-weight:500}
+
+.stage{display:grid;grid-template-rows:minmax(0,1fr) auto;min-height:0;background:var(--surface);border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.cwrap{position:relative;min-height:0}
+canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+.cbar{position:absolute;left:12px;right:12px;top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;pointer-events:none}
+.chip{font-size:12px;color:var(--muted);background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:3px 10px}
+.viewseg{pointer-events:auto}
+.viewseg button{padding:3px 12px;font-size:12px}
+#c3d{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+#c3d:active{cursor:grabbing}
+.snapbtn{pointer-events:auto;font-size:12px;font-weight:500;padding:3px 10px;border-radius:20px;color:var(--muted)}
+.snapbtn[aria-pressed="true"]{color:var(--ink);background:var(--accent-soft);border-color:var(--accent)}
+/* floating warnings: overlay the canvas, never resize it */
+.alerts{position:absolute;left:12px;right:12px;bottom:12px;display:flex;flex-direction:column;align-items:flex-start;gap:8px;pointer-events:none}
+.alert{pointer-events:auto;display:flex;gap:10px;align-items:flex-start;max-width:min(560px,100%);padding:9px 8px 9px 12px;border-radius:7px;border:1px solid var(--line);background:var(--surface);box-shadow:var(--shadow);font-size:13px;line-height:1.4}
+.alert::before{content:"";flex:none;width:8px;height:8px;border-radius:50%;margin-top:5px;background:var(--warn)}
+.alert.bad::before{background:var(--bad)}
+.alert.w{background:var(--warn-soft)} .alert.bad{background:var(--bad-soft)}
+.alert span{flex:1;min-width:0}
+.alert button{border:0;background:transparent;color:var(--muted);padding:0 6px;font-size:17px;line-height:1.1}
+.alert button:hover{color:var(--ink)}
+.stats{display:flex;gap:6px 22px;padding:10px 14px;border-top:1px solid var(--line);font:12px var(--f-mono);font-variant-numeric:tabular-nums;white-space:nowrap;overflow-x:auto}
+.stat span{color:var(--muted);margin-right:6px;font-family:var(--f-body);font-size:12.5px}
+.stat b{font-weight:500}
+.stat.warn b{color:var(--warn)} .stat.bad b{color:var(--bad)}
+.toast{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 14px;border-radius:6px;font-size:13px;max-width:min(92vw,520px);z-index:20}
+/* Mac app: header doubles as the title bar */
+.is-app .app{padding-top:10px}
+.is-app header{-webkit-app-region:drag;padding-left:70px;min-height:34px}
+.is-app header button,.is-app header select,.is-app header .seg{-webkit-app-region:no-drag}
+.is-app .brand h1{font-size:18px}
+.docname{color:var(--muted);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:32ch}
+.docname b{font-weight:500;color:var(--ink)}
+@media (max-width:780px){
+  html,body{height:auto}
+  .app{height:auto}
+  .main{grid-template-columns:1fr}
+  .stage{height:64vh;min-height:360px;order:-1}
+  .brand span{display:none}
+  aside{overflow:visible}
+  .tools{width:100%}
+  .tools select{flex:1 1 100%;min-width:0}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="app">
+  <header>
+    <div class="brand"><h1>Perforation Studio</h1><span id="tagline">Parametric vent, grille and halftone patterns in millimetres</span><span class="docname" id="docName" hidden></span></div>
+    <div class="tools">
+      <select id="preset" aria-label="Preset"></select>
+      <div class="seg" role="group" aria-label="Export as"><button id="mPlate" aria-pressed="true">Plate with holes</button><button id="mHoles" aria-pressed="false">Holes only</button></div>
+      <div class="seg hist" role="group" aria-label="History"><button id="bUndo" title="Undo (Ctrl or ⌘ + Z)">↶ Undo</button><button id="bRedo" title="Redo (Shift + Ctrl or ⌘ + Z)">↷ Redo</button></div>
+      <button id="bDXF" class="primary">Export DXF</button>
+      <button id="bSVG">Export SVG</button>
+      <button id="bCopy">Copy DXF</button>
+    </div>
+  </header>
+  <div class="main">
+    <aside id="side"></aside>
+    <div class="stage">
+      <div class="cwrap" id="cwrap">
+        <canvas id="cv" aria-label="Pattern preview"></canvas>
+        <canvas id="c3d" aria-label="3D preview of the wrapped part" hidden></canvas>
+        <div class="cbar">
+          <div class="seg viewseg" id="viewSeg" role="group" aria-label="View" hidden><button id="vFlat" aria-pressed="true">Flat</button><button id="v3d" aria-pressed="false">3D</button></div>
+          <button class="snapbtn" id="snapBtn" aria-pressed="true" title="Snap handles to the panel centre, edges, other controllers, and horizontal or vertical. Hold Shift to step angles by 15°.">Snap on</button>
+          <div class="chip" id="chip"></div>
+        </div>
+        <div class="alerts" id="alerts" aria-live="polite"></div>
+      </div>
+      <div class="stats" id="stats"></div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>/*CORE*/</script>
+<script>/*PRESETS*/</script>
+<script>
+(function(){
+'use strict';
+const $=s=>document.querySelector(s);
+const {DEF,PRESETS}=PerfPresets, Core=PerfCore;
+const clone=o=>JSON.parse(JSON.stringify(o,(k,v)=>k.startsWith('_')?undefined:v));
+let S=clone(DEF), RES=null, active=0, snapOn=true, guides=[];
+const APP=window.perfApp||null;
+let onHist=()=>{};
+if(APP) document.documentElement.classList.add('is-app');
+
+const OPT={
+  boundary:[['rect','Rectangle'],['rounded','Rounded rectangle'],['circle','Circle'],['ellipse','Ellipse']],
+  layout:[['grid','Square grid'],['hex','Hex stagger'],['random','Random scatter'],['fibonacci','Sunflower (Fibonacci)'],['concentric','Concentric rings'],['spiral','Spiral']],
+  shape:[['circle','Circle'],['hexagon','Hexagon'],['square','Square'],['triangle','Triangle'],['diamond','Diamond'],['slot','Slot']],
+  ease:[['linear','Linear'],['smooth','Smooth'],['in','Ease in'],['out','Ease out']],
+  blend:[['max','Max (strongest wins)'],['add','Add'],['average','Average'],['multiply','Multiply'],['min','Min (weakest wins)']],
+  jitMode:[['all','Everywhere'],['mid','In the transition band'],['high','Where holes are large'],['low','Where holes are small']],
+  gtype:[['radial','Radial point'],['linear','Linear'],['image','Image brightness']],
+  wrapShape:[['cyl','Cylinder'],['cone','Cone or frustum']],
+};
+const hasG=()=>S.grads.length>0;
+const ranged=()=>hasG()||S.jit>0;
+const TYPE_NAME={radial:'Radial',linear:'Linear',image:'Image'};
+
+const SECTIONS=[
+ {t:'Panel',items:[
+  {k:'wrap',type:'check',label:'Wrap around a cylinder (left and right edges join seamlessly)'},
+  {k:'wrapShape',type:'select',label:'Part shape',show:()=>S.wrap},
+  {k:'cylD',label:'Cylinder diameter',min:5,max:400,step:0.5,u:'mm',show:()=>S.wrap&&S.wrapShape!=='cone',tip:'Diameter of the surface the pattern is applied to'},
+  {k:'d1',label:'Bottom diameter',min:0,max:600,step:0.5,u:'mm',show:()=>S.wrap&&S.wrapShape==='cone'},
+  {k:'d2',label:'Top diameter',min:0,max:600,step:0.5,u:'mm',show:()=>S.wrap&&S.wrapShape==='cone',tip:'Set to 0 for a pointed cone'},
+  {k:'axH',label:'Height (along the axis)',min:2,max:600,step:0.5,u:'mm',show:()=>S.wrap&&S.wrapShape==='cone'},
+  {k:'boundary',type:'select',label:'Boundary',show:()=>!S.wrap},
+  {k:'W',label:()=>S.boundary==='circle'?'Diameter':'Width',min:10,max:600,step:0.5,u:'mm',show:()=>!S.wrap},
+  {k:'H',label:()=>S.wrap?'Height (along the cylinder)':'Height',min:10,max:600,step:0.5,u:'mm',show:()=>S.wrap?S.wrapShape!=='cone':S.boundary!=='circle'},
+  {k:'corner',label:'Corner radius',min:0,max:100,step:0.5,u:'mm',show:()=>!S.wrap&&S.boundary==='rounded'},
+  {k:'margin',label:()=>S.wrap?'Top and bottom margin':'Edge margin',min:0,max:50,step:0.5,u:'mm'},
+  {k:'_wh',type:'hint',show:()=>S.wrap,text:()=>wrapHint()},
+  {k:'thick',label:'Sheet thickness',min:0.2,max:10,step:0.1,u:'mm',tip:'Used for the manufacturability checks only'},
+ ]},
+ {t:'Layout',items:[
+  {k:'layout',type:'select',label:'Layout'},
+  {k:'pitch',label:()=>S.adaptive?'Pitch where holes are smallest':'Pitch (centre to centre)',min:0.8,max:50,step:0.1,u:'mm'},
+  {k:'adaptive',type:'check',label:'Spread out larger holes so they never collide'},
+  {k:'webMin',label:'Minimum web between holes',min:0,max:10,step:0.1,u:'mm',show:()=>S.adaptive,tip:'Material left between neighbouring holes. Larger holes skip neighbours to keep at least this much.'},
+  {k:'rowF',label:'Row spacing',min:0.3,max:6,step:0.05,u:'×',show:()=>!['random','fibonacci'].includes(S.layout)},
+  {k:'angle',label:'Lattice angle',min:-90,max:90,step:1,u:'°',show:()=>!S.wrap&&['grid','hex'].includes(S.layout)},
+  {k:'twist',label:'Helix twist',min:-75,max:75,step:1,u:'°',show:()=>S.wrap&&['grid','hex'].includes(S.layout),tip:'Shifts each row so the lattice spirals around the part. It always closes at the seam.'},
+  {k:'seed',label:'Layout seed',min:1,max:999,step:1,u:'',show:()=>S.layout==='random'},
+ ]},
+ {t:'Holes',items:[
+  {k:'shape',type:'select',label:'Shape'},
+  {k:'sMin',label:'Smallest size',min:0,max:40,step:0.1,u:'mm',show:ranged},
+  {k:'sMax',label:()=>ranged()?'Largest size':'Size',min:0.2,max:40,step:0.1,u:'mm'},
+  {k:'elong',label:'Length ÷ width',min:1,max:12,step:0.1,u:'×',show:()=>['slot','diamond'].includes(S.shape)},
+  {k:'rot',label:'Rotation',min:-180,max:180,step:1,u:'°',show:()=>S.shape!=='circle'},
+  {k:'rotGrad',label:'Extra rotation from gradient',min:-180,max:180,step:1,u:'°',show:()=>S.shape!=='circle'&&hasG()},
+  {k:'alignRadial',type:'check',label:'Point holes away from centre',show:()=>S.shape!=='circle'&&!S.wrap},
+  {k:'steps',label:'Size steps (0 = continuous)',min:0,max:12,step:1,u:'',show:ranged,tip:'Snap to a few sizes, e.g. the drill bits you own'},
+  {k:'dropBelow',label:'Skip holes smaller than',min:0,max:10,step:0.1,u:'mm',show:ranged},
+ ]},
+ {t:'Gradients',custom:true},
+ {t:'Random variation',items:[
+  {k:'jit',label:'Size variation',min:0,max:100,step:1,u:'%',tip:'Percent of the smallest-to-largest range each hole can shift'},
+  {k:'jitMode',type:'select',label:'Apply variation',show:()=>hasG()&&S.jit>0},
+  {k:'rotJit',label:'Rotation variation',min:0,max:180,step:1,u:'± °',show:()=>S.shape!=='circle'},
+  {k:'jitSeed',label:'Variation seed',min:1,max:999,step:1,u:'',show:()=>S.jit>0||S.rotJit>0},
+  {k:'_jh',type:'hint',text:()=>!hasG()?'With no gradients, sizes scatter between the smallest and largest size.':S.jitMode==='mid'?'Variation is strongest halfway along the gradient and fades out at both ends.':'Each hole keeps its random value while you drag controllers. Change the seed for a new mix.',show:()=>S.jit>0},
+ ]},
+ {t:'Export',items:[
+  {k:'_mode',type:'hint',text:()=>S.out==='holes'?'Holes only: every hole is its own closed profile and the plate outline is left out, so each one extrudes as a separate body.':'Plate with holes: the outline plus every hole, ready to cut or extrude as one perforated plate.'},
+  {k:'_ex',type:'hint',text:()=>(S.wrap?'Wrapped: the export is the flat development (circumference × height). Use Wrap or Emboss in Fusion, SolidWorks or Onshape to put it on the cylinder. ':'')+'DXF R12, millimetres, origin at the bottom-left corner of the panel, so holes-only and plate exports line up. Holes on layer HOLES, outline on layer OUTLINE. Circles export as true circles and slots keep real arcs.'},
+ ]},
+];
+
+// ---------- history: global undo/redo, per-control reset and undo ----------
+let gid=0;
+const imgs={};
+function ensureIds(){ S.grads.forEach(g=>{ if(!g.id) g.id='g'+(++gid); }); }
+const snapStr=()=>JSON.stringify(S,(k,v)=>k.startsWith('_')?undefined:v);
+let hist=[], hidx=-1, base={}, gbase={}, cursor=null;
+function setBaseline(){ ensureIds(); base=JSON.parse(snapStr()); gbase={}; S.grads.forEach(g=>{gbase[g.id]=clone(g);}); }
+function commit(){
+  ensureIds(); const s=snapStr();
+  if(hidx>=0&&hist[hidx].s===s) return;
+  hist=hist.slice(0,hidx+1); hist.push({s,o:JSON.parse(s),base,gbase});
+  if(hist.length>400){ hist.shift(); }
+  hidx=hist.length-1; cursor=null; updUndo(); syncControls(); onHist();
+}
+function restore(o){
+  S=clone(o); S.grads.forEach(g=>{ if(imgs[g.id]) g._img=imgs[g.id]; });
+  modeUI(); renderGrad(); syncControls(); schedule(); custom();
+}
+function undo(){ if(hidx>0){ hidx--; cursor=null; base=hist[hidx].base; gbase=hist[hidx].gbase; restore(hist[hidx].o); updUndo(); onHist(); } }
+function redo(){ if(hidx<hist.length-1){ hidx++; cursor=null; base=hist[hidx].base; gbase=hist[hidx].gbase; restore(hist[hidx].o); updUndo(); onHist(); } }
+function updUndo(){ $('#bUndo').disabled=hidx<=0; $('#bRedo').disabled=hidx>=hist.length-1; }
+function keyGet(o,key){
+  if(key.startsWith('g:')){ const [,id,f]=key.split(':'); const g=(o.grads||[]).find(x=>x.id===id); return g?g[f]:undefined; }
+  return o[key];
+}
+function keySet(key,v){
+  if(key.startsWith('g:')){
+    const [,id,f]=key.split(':'), g=S.grads.find(x=>x.id===id); if(!g) return;
+    if(f==='type') changeType(g,v); else g[f]=v;
+    renderGrad();
+  } else set(key,v);
+  syncControls(); schedule(); custom();
+}
+function defOf(key){
+  if(key.startsWith('g:')){ const [,id,f]=key.split(':'); return gbase[id]?gbase[id][f]:undefined; }
+  return key in base?base[key]:DEF[key];
+}
+// newest earlier value of this one setting that differs from what it is now
+function prevIdx(key){
+  const cur=keyGet(S,key);
+  for(let j=(cursor&&cursor.key===key?cursor.from-1:hidx); j>=0; j--){
+    const v=keyGet(hist[j].o,key);
+    if(v===undefined) return -1;
+    if(v!==cur) return j;
+  }
+  return -1;
+}
+function ctlUndo(key){
+  const j=prevIdx(key); if(j<0) return;
+  keySet(key,keyGet(hist[j].o,key)); commit();
+  cursor={key,from:j}; syncControls();
+}
+function resetKey(key){
+  const d=defOf(key); if(d===undefined||d===keyGet(S,key)) return;
+  keySet(key,d); commit();
+}
+function fmtVal(key,v){
+  if(typeof v==='boolean') return v?'on':'off';
+  if(typeof v==='number') return key.endsWith(':w')?Math.round(v*100)+'%':String(+v.toFixed(3));
+  for(const list of Object.values(OPT)){ const f=list.find(x=>x[0]===v); if(f) return f[1]; }
+  return String(v);
+}
+function header(key,o){
+  const lh=document.createElement('div'); lh.className='lh';
+  const nm=document.createElement('button'); nm.type='button'; nm.className='nm'; lh.appendChild(nm);
+  if(o.u){const un=document.createElement('span');un.className='unit';un.textContent=o.u;lh.appendChild(un);}
+  const cu=document.createElement('button'); cu.type='button'; cu.className='cu'; cu.textContent='↶'; lh.appendChild(cu);
+  nm.addEventListener('click',()=>resetKey(key));
+  cu.addEventListener('click',()=>ctlUndo(key));
+  const sync=(input)=>{
+    const label=txt(o.label); nm.textContent=label;
+    const d=defOf(key), cur=keyGet(S,key), mod=d!==undefined&&cur!==d;
+    nm.classList.toggle('mod',mod);
+    nm.title=(mod?`Click to reset to default (${fmtVal(key,d)})`:'At its default value')+(o.tip?'. '+o.tip:'');
+    const j=prevIdx(key); cu.hidden=j<0;
+    if(j>=0){ cu.title=`Undo this setting (back to ${fmtVal(key,keyGet(hist[j].o,key))})`; cu.setAttribute('aria-label','Undo '+label); }
+    if(input) input.setAttribute('aria-label',label);
+  };
+  return {lh,sync};
+}
+
+function wrapHint(){
+  const d=S._dev; if(!d) return '';
+  const seam=' Holes on the seam are split into two pieces, one at each edge, that rejoin when the sheet is wrapped.';
+  if(d.kind==='cone'){
+    const rows=RES&&RES.fit&&RES.fit.rows?` ${RES.fit.rows} rows, ${RES.fit.nMin} to ${RES.fit.nMax} holes per row so the pitch stays even.`:'';
+    return `Flat pattern is a ${(d.phi*180/Math.PI).toFixed(1)}° ring sector, ${S.W.toFixed(1)} × ${S.H.toFixed(1)} mm overall, slant length ${d.L.toFixed(1)} mm.`+rows+seam;
+  }
+  return `Flat width ${S.W.toFixed(2)} mm = π × ${S.cylD} mm.`+(RES&&RES.fit&&RES.fit.px?` Pitch fitted to ${RES.fit.px.toFixed(3)} mm so ${RES.fit.cols} columns close the loop.`:'')+seam;
+}
+
+// ---------- control builders ----------
+function makeNum(id,key,o,get,setv){
+  const wrap=document.createElement('div'); wrap.className='ctl';
+  const hd=header(key,o);
+  const r=document.createElement('input'); r.type='range'; r.min=o.min; r.max=o.max; r.step=o.step; r.id=id+'_r'; r.setAttribute('aria-hidden','true'); r.tabIndex=-1;
+  const n=document.createElement('input'); n.type='number'; n.step=o.step; n.id=id; n.min=o.min;
+  r.addEventListener('input',()=>{n.value=r.value; setv(parseFloat(r.value));});
+  n.addEventListener('input',()=>{const v=parseFloat(n.value); if(Number.isFinite(v)){r.value=v; setv(v);}});
+  wrap.append(hd.lh,r,n);
+  const sync=()=>{ hd.sync(n); const v=get(); r.value=v; if(document.activeElement!==n) n.value=+(+v).toFixed(3); };
+  return {wrap,sync,r,n};
+}
+function makeSelect(id,key,label,opts,get,setv){
+  const wrap=document.createElement('div'); wrap.className='ctl sel';
+  const hd=header(key,{label});
+  const s=document.createElement('select'); s.id=id;
+  opts.forEach(([v,t])=>{const op=document.createElement('option');op.value=v;op.textContent=t;s.appendChild(op);});
+  s.addEventListener('change',()=>setv(s.value));
+  wrap.append(hd.lh,s);
+  return {wrap,sync:()=>{hd.sync(s); s.value=get();}};
+}
+function makeCheck(id,key,label,get,setv){
+  const wrap=document.createElement('div'); wrap.className='ctl chk';
+  const c=document.createElement('input'); c.type='checkbox'; c.id=id;
+  const hd=header(key,{label});
+  c.addEventListener('change',()=>setv(c.checked));
+  wrap.append(c,hd.lh);
+  return {wrap,sync:()=>{hd.sync(c); c.checked=!!get();}};
+}
+const txt=v=>typeof v==='function'?v():v;
+
+const refs=[];
+let gradBox=null;
+function buildControls(){
+  const side=$('#side');
+  SECTIONS.forEach(sec=>{
+    const g=document.createElement('section'); g.className='grp';
+    const h=document.createElement('h2'); h.textContent=sec.t; g.appendChild(h);
+    if(sec.custom){ gradBox=g; side.appendChild(g); return; }
+    sec.items.forEach(it=>{
+      const type=it.type||'num', id='c_'+it.k;
+      let ref;
+      if(type==='hint'){ const wrap=document.createElement('div'); wrap.className='ctl'; const p=document.createElement('p'); p.className='hint'; wrap.appendChild(p); ref={wrap,sync:()=>{p.textContent=txt(it.text);}}; }
+      else if(type==='num') ref=makeNum(id,it.k,it,()=>S[it.k],v=>set(it.k,v));
+      else if(type==='select'){ ref=makeSelect(id,it.k,it.label,OPT[it.k],()=>S[it.k],v=>{set(it.k,v); syncControls();});
+        if(it.k==='layout'){ const s0=ref.sync, sel=ref.wrap.querySelector('select'); ref.sync=()=>{ [...sel.options].forEach(o=>{ const off=S.wrap&&(['fibonacci','concentric','spiral'].includes(o.value)||(S.wrapShape==='cone'&&o.value==='random')); o.disabled=off; o.textContent=OPT.layout.find(x=>x[0]===o.value)[1]+(off?(S.wrapShape==='cone'&&o.value==='random'?' (not on cones)':' (not with wrap)'):''); }); s0(); }; } }
+      else if(type==='check') ref=makeCheck(id,it.k,it.label,()=>S[it.k],v=>set(it.k,v));
+      ref.show=it.show; g.appendChild(ref.wrap); refs.push(ref);
+    });
+    side.appendChild(g);
+  });
+}
+function syncControls(){
+  refs.forEach(ref=>{ ref.wrap.hidden=ref.show?!ref.show():false; ref.sync(); });
+  gradRefs.forEach(ref=>{ ref.wrap.hidden=ref.show?!ref.show():false; ref.sync(); });
+}
+const LIVE=new Set(['jit','sMin','rotJit']);
+function set(k,v){
+  S[k]=v;
+  if(k==='wrap'&&v){ S.cylD=Math.round(S.W/Math.PI*2)/2; Core.normalize(S); }
+  if(k==='wrapShape'){
+    if(v==='cone'){ S.axH=S.H; S.d1=S.cylD; S.d2=Math.round(S.cylD*0.6*2)/2; }
+    else { S.cylD=S.d1||S.cylD; S.H=S.axH||S.H; }
+  }
+  if(['cylD','wrapShape','d1','d2','axH'].includes(k)) Core.normalize(S);
+  if(k==='wrap'&&!v&&view3d) setView(false);
+  if(k==='boundary'&&v==='circle'){S.H=S.W;}
+  if(k==='W'&&S.boundary==='circle'){S.H=v;}
+  if(['boundary','shape','layout','adaptive','wrap','cylD','wrapShape','d1','d2','axH'].includes(k)||LIVE.has(k)) syncControls();
+  schedule();
+}
+
+// ---------- gradient controllers panel ----------
+let gradRefs=[];
+const MAXG=8;
+function gSummary(g){
+  const W=S.W,H=S.H, f=v=>+v.toFixed(1);
+  if(g.type==='radial') return `(${f(g.u*W)}, ${f(g.v*H)}) r ${f(g.r)}`;
+  if(g.type==='linear') return `${Math.round(Math.atan2((g.bv-g.av)*H,(g.bu-g.au)*W)*180/Math.PI)}°`;
+  return g._img?'image loaded':'no image yet';
+}
+function newCtrl(type){
+  const n=S.grads.length, spots=[[.5,.5],[.3,.5],[.7,.5],[.5,.3],[.5,.7],[.25,.25],[.75,.75],[.25,.75]];
+  const [u,v]=spots[n%spots.length];
+  if(type==='radial') return {type,u,v,r:Math.round(Math.min(S.W,S.H)*0.4),invert:false,w:1};
+  if(type==='linear') return {type,au:.1,av:.5,bu:.9,bv:.5,invert:false,w:1};
+  return {type:'image',invert:false,w:1};
+}
+function renderGrad(){
+  if(!gradBox) return;
+  while(gradBox.children.length>1) gradBox.lastChild.remove();
+  gradRefs=[];
+  if(active>=S.grads.length) active=Math.max(0,S.grads.length-1);
+  const list=document.createElement('div'); list.className='glist';
+  S.grads.forEach((g,i)=>{
+    const row=document.createElement('div'); row.className='grow';
+    const b=document.createElement('button'); b.className='gsel'; b.setAttribute('aria-pressed',i===active);
+    const num=document.createElement('span'); num.className='gnum'; num.textContent=i+1;
+    const nm=document.createElement('span'); nm.textContent=TYPE_NAME[g.type];
+    const sm=document.createElement('small'); sm.textContent=gSummary(g); sm.dataset.i=i;
+    b.append(num,nm,sm); b.addEventListener('click',()=>{active=i; renderGrad(); draw();});
+    const x=document.createElement('button'); x.className='gx'; x.textContent='×'; x.title='Remove gradient '+(i+1); x.setAttribute('aria-label','Remove gradient '+(i+1));
+    x.addEventListener('click',()=>{S.grads.splice(i,1); if(active>=i&&active>0) active--; renderGrad(); syncControls(); schedule(); custom(); commit();});
+    row.append(b,x); list.appendChild(row);
+  });
+  if(!S.grads.length){ const p=document.createElement('p'); p.className='hint'; p.textContent='No gradients. Every hole is the same size. Add one to vary sizes across the panel.'; list.appendChild(p); }
+  gradBox.appendChild(list);
+
+  const add=document.createElement('div'); add.className='gadd';
+  [['radial','+ Radial'],['linear','+ Linear'],['image','+ Image']].forEach(([t,l])=>{
+    const b=document.createElement('button'); b.textContent=l; b.disabled=S.grads.length>=MAXG;
+    b.addEventListener('click',()=>{const g=newCtrl(t); S.grads.push(g); ensureIds(); gbase=Object.assign({},gbase,{[g.id]:clone(g)}); active=S.grads.length-1; renderGrad(); syncControls(); schedule(); custom(); commit();});
+    add.appendChild(b);
+  });
+  gradBox.appendChild(add);
+
+  const gl=[
+    Object.assign(makeSelect('g_blend','blend','Combine gradients',OPT.blend,()=>S.blend,v=>{S.blend=v; schedule(); custom();}),{show:()=>S.grads.length>1}),
+    Object.assign(makeSelect('g_ease','ease','Curve',OPT.ease,()=>S.ease,v=>{S.ease=v; schedule(); custom();}),{show:hasG}),
+  ];
+  gl.forEach(r=>{gradBox.appendChild(r.wrap); gradRefs.push(r);});
+
+  const g=S.grads[active];
+  if(g){
+    const box=document.createElement('div'); box.className='gedit';
+    const t=document.createElement('p'); t.className='ttl'; t.textContent='Gradient '+(active+1); box.appendChild(t);
+    const ed=[];
+    const K=f=>`g:${g.id}:${f}`;
+    ed.push(makeSelect('g_type',K('type'),'Type',OPT.gtype,()=>g.type,v=>{ changeType(g,v); renderGrad(); schedule(); custom(); }));
+    if(g.type==='radial'){
+      const rr=makeNum('g_r',K('r'),{label:'Falloff radius',u:'mm',min:2,max:400,step:0.5},()=>g.r,v=>{g.r=Math.max(0.5,v); updSummary(); schedule(); custom();});
+      ed.push(rr); radRef=rr;
+    } else radRef=null;
+    if(g.type==='image'){
+      const wrap=document.createElement('div'); wrap.className='ctl sel';
+      const lab=document.createElement('label'); lab.htmlFor='g_img'; lab.textContent='Image (dark areas make larger holes)';
+      const f=document.createElement('input'); f.type='file'; f.accept='image/*'; f.id='g_img';
+      f.addEventListener('change',()=>{ if(f.files&&f.files[0]) loadImage(g,f.files[0]); });
+      wrap.append(lab,f); ed.push({wrap,sync(){}});
+    }
+    ed.push(makeNum('g_w',K('w'),{label:'Strength',u:'%',min:0,max:100,step:1},()=>Math.round(g.w*100),v=>{g.w=Math.max(0,Math.min(1,v/100)); schedule(); custom();}));
+    ed.push(makeCheck('g_inv',K('invert'),'Invert (big holes away from this controller)',()=>g.invert,v=>{g.invert=v; schedule(); custom();}));
+    const hint=document.createElement('p'); hint.className='hint';
+    hint.textContent=g.type==='radial'?'Drag the numbered dot to move it and the ring handle to resize. Click empty canvas to move the selected one there.':g.type==='linear'?'Drag the A and B handles. Snap locks the line horizontal or vertical.':'The image is cropped to fill the panel.';
+    ed.forEach(r=>{box.appendChild(r.wrap); gradRefs.push(r);});
+    box.appendChild(hint);
+    gradBox.appendChild(box);
+  }
+  gradRefs.forEach(r=>{ r.wrap.hidden=r.show?!r.show():false; r.sync(); });
+}
+let radRef=null;
+function changeType(g,v){
+  const keep={id:g.id,invert:g.invert,w:g.w}, fresh=newCtrl(v);
+  Object.keys(g).forEach(k=>delete g[k]); Object.assign(g,fresh,keep);
+  if(imgs[g.id]&&v==='image') g._img=imgs[g.id];
+}
+function updSummary(){ gradBox&&gradBox.querySelectorAll('.gsel small').forEach(sm=>{ const g=S.grads[+sm.dataset.i]; if(g) sm.textContent=gSummary(g); }); }
+
+// ---------- image controller ----------
+function loadImage(g,file){
+  const url=URL.createObjectURL(file), im=new Image();
+  im.onload=()=>{g._img=im; imgs[g.id]=im; g._sampler=null; renderGrad(); schedule(); toast('Image loaded. Dark areas now open larger holes.');};
+  im.onerror=()=>toast('That file could not be read as an image. Try a PNG or JPEG.');
+  im.src=url;
+}
+function makeSampler(im,W,H){
+  const ar=W/H, M=360; let cw,ch;
+  if(ar>=1){cw=M;ch=Math.max(1,Math.round(M/ar));}else{ch=M;cw=Math.max(1,Math.round(M*ar));}
+  const c=document.createElement('canvas'); c.width=cw; c.height=ch; const x=c.getContext('2d');
+  const s=Math.max(cw/im.width,ch/im.height), dw=im.width*s, dh=im.height*s;
+  x.fillStyle='#fff'; x.fillRect(0,0,cw,ch); x.drawImage(im,(cw-dw)/2,(ch-dh)/2,dw,dh);
+  const d=x.getImageData(0,0,cw,ch).data, L=new Float32Array(cw*ch);
+  for(let i=0;i<L.length;i++) L[i]=1-(0.2126*d[i*4]+0.7152*d[i*4+1]+0.0722*d[i*4+2])/255;
+  return {sample(u,v){const xi=Math.min(cw-1,Math.max(0,Math.floor(u*cw))), yi=Math.min(ch-1,Math.max(0,Math.floor(v*ch))); return L[yi*cw+xi];}};
+}
+
+// ---------- compute + draw ----------
+let raf=0;
+function schedule(){ if(raf) return; raf=requestAnimationFrame(()=>{raf=0; run();}); }
+function run(){
+  Core.normalize(S);
+  const a=S.W/S.H;
+  S.grads.forEach(g=>{ if(g.type==='image'&&g._img&&(!g._sampler||g._aspect!==a)){ g._sampler=makeSampler(g._img,S.W,S.H); g._aspect=a; } });
+  RES=Core.compute(S);
+  draw(); renderStats(); renderAlerts(); updSummary(); if(S.wrap) syncControls();
+  if(view3d){ if(!S.wrap) setView(false); else build3D(); }
+}
+const cv=$('#cv'), ctx=cv.getContext('2d'); let view={sc:1,ox:0,oy:0};
+const col=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const toScreen=(x,y)=>[view.ox+x*view.sc, view.oy+(S.H-y)*view.sc];
+const toModel=(X,Y)=>[(X-view.ox)/view.sc, S.H-(Y-view.oy)/view.sc];
+const UV=(u,v)=>{ if(S.wrap&&!S._dev) Core.normalize(S); return Core.uvToXY(S,u,v); };
+const XYUV=(x,y)=>{ if(S.wrap&&!S._dev) Core.normalize(S); return Core.xyToUV(S,x,y); };
+const isCone=()=>!!(S._dev&&S._dev.kind==='cone');
+function handlePts(){
+  const out=[];
+  S.grads.forEach((g,i)=>{
+    if(g.type==='radial'){ const c=UV(g.u,g.v); out.push({i,p:'c',m:c}); out.push({i,p:'r',m:[c[0]+g.r,c[1]]}); }
+    else if(g.type==='linear'){ out.push({i,p:'a',m:UV(g.au,g.av)}); out.push({i,p:'b',m:UV(g.bu,g.bv)}); }
+  });
+  return out;
+}
+function draw(){
+  const r=cv.getBoundingClientRect(), dpr=window.devicePixelRatio||1;
+  if(!r.width||!r.height) return;
+  cv.width=Math.round(r.width*dpr); cv.height=Math.round(r.height*dpr);
+  const pad=Math.min(56,Math.max(28,r.width*0.06)), W=S.W, H=S.H;
+  const sc=Math.max(0.01,Math.min((r.width-2*pad)/W,(r.height-2*pad-14)/H));
+  view={sc,ox:(r.width-W*sc)/2,oy:(r.height-H*sc)/2-7};
+  ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,r.width,r.height);
+  ctx.setTransform(sc*dpr,0,0,sc*dpr,view.ox*dpr,view.oy*dpr);
+  const bd=new Path2D(Core.boundaryD(S)), inv=S.out==='holes';
+  if(inv){ ctx.setLineDash([4/sc,4/sc]); ctx.lineWidth=1/sc; ctx.strokeStyle=col('--sheet-edge'); ctx.stroke(bd); ctx.setLineDash([]); }
+  else { ctx.fillStyle=col('--sheet'); ctx.fill(bd); ctx.lineWidth=1.2/sc; ctx.strokeStyle=col('--sheet-edge'); ctx.stroke(bd); }
+  if(S.wrap&&RES&&!RES.error){
+    const hp0=new Path2D(RES.d);
+    const dvv=S._dev, cone=dvv.kind==='cone', apx=cone?dvv.ax:0, apy=cone?H-dvv.ay:0;
+    [-1,1].forEach(s=>{ ctx.save(); ctx.globalAlpha=.38;
+      if(cone){ ctx.translate(apx,apy); ctx.rotate(-s*dvv.phi); ctx.translate(-apx,-apy); } else ctx.translate(s*W,0);
+      if(inv){ ctx.fillStyle=col('--sheet'); ctx.fill(hp0); } else { ctx.fillStyle=col('--sheet'); ctx.fill(bd); ctx.fillStyle=col('--hole'); ctx.fill(hp0); }
+      ctx.restore(); });
+    ctx.save(); ctx.setLineDash([3/sc,3/sc]); ctx.lineWidth=1.2/sc; ctx.strokeStyle=col('--accent');
+    if(cone){ [dvv.th0,dvv.th0+dvv.phi].forEach(t=>{ ctx.beginPath(); ctx.moveTo(dvv.ax+dvv.Rt*Math.cos(t),H-(dvv.ay+dvv.Rt*Math.sin(t))); ctx.lineTo(dvv.ax+(dvv.Rb+6/sc)*Math.cos(t),H-(dvv.ay+(dvv.Rb+6/sc)*Math.sin(t))); ctx.stroke(); }); }
+    else [0,W].forEach(x=>{ ctx.beginPath(); ctx.moveTo(x,-6/sc); ctx.lineTo(x,H+6/sc); ctx.stroke(); });
+    ctx.restore();
+  }
+  if(RES&&!RES.error){
+    const hp=new Path2D(RES.d);
+    ctx.fillStyle=inv?col('--sheet'):col('--hole'); ctx.fill(hp);
+    ctx.lineWidth=0.8/sc; ctx.strokeStyle=col('--sheet-edge'); ctx.stroke(hp);
+  }
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.fillStyle=col('--muted'); ctx.font='500 12px '+col('--f-mono'); ctx.textAlign='center'; ctx.textBaseline='top';
+  ctx.fillText(isCone()?`${+W.toFixed(1)} × ${+H.toFixed(1)} mm flat · ${(S._dev.phi*180/Math.PI).toFixed(1)}° sector · wraps Ø ${S.d1} → Ø ${S.d2} × ${S.axH} mm`:S.wrap?`${+W.toFixed(2)} × ${+H.toFixed(2)} mm flat · wraps Ø ${S.cylD} mm`:S.boundary==='circle'?`Ø ${+W.toFixed(2)} mm`:`${+W.toFixed(2)} × ${+H.toFixed(2)} mm`, view.ox+W*sc/2, view.oy+H*sc+10);
+
+  // snap guides
+  const acc=col('--accent'), oth=col('--other'), surf=col('--surface'), ink=col('--accent-ink');
+  if(guides.length){
+    ctx.save(); ctx.strokeStyle=acc; ctx.globalAlpha=.7; ctx.lineWidth=1; ctx.setLineDash([2,4]);
+    guides.forEach(g=>{ ctx.beginPath();
+      if(isCone()){
+        const n=64;
+        for(let k=0;k<=n;k++){ const t=-0.15+1.3*k/n, p=g.u!=null?toScreen(...UV(g.u,t)):toScreen(...UV(t,g.v)); k?ctx.lineTo(...p):ctx.moveTo(...p); }
+      } else if(g.u!=null){ const X=toScreen(g.u*S.W,0)[0]; ctx.moveTo(X,0); ctx.lineTo(X,r.height); }
+      else { const Y=toScreen(0,g.v*S.H)[1]; ctx.moveTo(0,Y); ctx.lineTo(r.width,Y); }
+      ctx.stroke(); });
+    ctx.restore();
+  }
+  // controllers: inactive first, selected on top
+  const order=S.grads.map((g,i)=>i).sort((a,b)=>(a===active)-(b===active));
+  order.forEach(i=>{
+    const g=S.grads[i], on=i===active, c=on?acc:oth;
+    ctx.save(); if(!on) ctx.globalAlpha=.85;
+    ctx.lineWidth=on?1.5:1.2; ctx.strokeStyle=c;
+    if(g.type==='radial'){
+      const [cx,cy]=toScreen(...UV(g.u,g.v));
+      ctx.setLineDash([5,4]); ctx.beginPath(); ctx.arc(cx,cy,g.r*sc,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
+      dot(cx+g.r*sc,cy,5,surf,c);
+      dot(cx,cy,9,c,surf); label(cx,cy,String(i+1),on?ink:surf);
+    } else if(g.type==='linear'){
+      const a=toScreen(...UV(g.au,g.av)), b=toScreen(...UV(g.bu,g.bv));
+      ctx.beginPath(); ctx.moveTo(...a); ctx.lineTo(...b); ctx.stroke();
+      const ang=Math.atan2(b[1]-a[1],b[0]-a[0]); ctx.beginPath();
+      ctx.moveTo(b[0]-15*Math.cos(ang-0.4),b[1]-15*Math.sin(ang-0.4)); ctx.lineTo(...b); ctx.lineTo(b[0]-15*Math.cos(ang+0.4),b[1]-15*Math.sin(ang+0.4)); ctx.stroke();
+      dot(...a,9,c,surf); label(...a,(i+1)+'A',on?ink:surf,9);
+      dot(...b,9,c,surf); label(...b,(i+1)+'B',on?ink:surf,9);
+    }
+    ctx.restore();
+  });
+  function dot(x,y,rad,fill,stroke){ ctx.beginPath(); ctx.arc(x,y,rad,0,Math.PI*2); ctx.fillStyle=fill; ctx.fill(); ctx.lineWidth=2; ctx.strokeStyle=stroke; ctx.stroke(); }
+  function label(x,y,t,c,size){ ctx.fillStyle=c; ctx.font=`700 ${size||10.5}px `+col('--f-mono'); ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(t,x,y+0.5); }
+
+  const chip=$('#chip'); const ag=S.grads[active];
+  const tip=ag?(ag.type==='radial'?'Drag dots and ring handles':ag.type==='linear'?'Drag A and B. Shift for 15° steps':'Image gradient selected'):'No gradients';
+  $('#viewSeg').hidden=!S.wrap;
+  if(!view3d) chip.textContent=(inv?'Holes only · outline is reference only · ':'')+(S.wrap?'Faded copies show the next repeat · ':'')+tip;
+}
+
+// ---------- stats + floating alerts ----------
+function renderStats(){
+  const el=$('#stats'); el.textContent='';
+  if(!RES||RES.error) return;
+  const add=(k,v,cls)=>{const d=document.createElement('div'); d.className='stat'+(cls?' '+cls:''); const s=document.createElement('span'); s.textContent=k; const b=document.createElement('b'); b.textContent=v; d.append(s,b); el.appendChild(d);};
+  const n=RES.holes.length, t=S.thick, web=RES.web;
+  add('Holes',n.toLocaleString());
+  add('Open area',(RES.open*100).toFixed(1)+'%');
+  add('Min web',web==null?'n/a':web<0.01?'touching':web.toFixed(2)+' mm',web==null?'':web<0.01?'bad':web<t?'warn':'');
+  add('Hole size',!n?'n/a':(RES.sMax-RES.sMin<0.005?RES.sMin.toFixed(2)+' mm':RES.sMin.toFixed(2)+' to '+RES.sMax.toFixed(2)+' mm'),n&&RES.sMin<t?'warn':'');
+  if(S.steps>=2&&RES.sizes.length<=12) add('Sizes',RES.sizes.map(s=>s.toFixed(2)).join(', '));
+  if(S.wrap){ if(RES.fit&&RES.fit.px) add('Columns',RES.fit.cols+' @ '+RES.fit.px.toFixed(3)+' mm'); if(RES.fit&&RES.fit.rows) add('Rows',RES.fit.rows+' · '+RES.fit.nMin+'–'+RES.fit.nMax+' per row'); add('Split on seam',String(RES.seamSplit)); }
+}
+const dismissed=new Set();
+function currentAlerts(){
+  const out=[];
+  if(!RES) return out;
+  if(RES.error){ out.push({id:'err',cls:'bad',t:RES.error}); return out; }
+  const n=RES.holes.length, t=S.thick, web=RES.web;
+  if(!n) out.push({id:'none',cls:'w',t:'No holes fit. Reduce the edge margin or the hole size.'});
+  if(n&&web!=null&&web<0.01) out.push({id:'touch',cls:'bad',t:'Holes touch or overlap. Increase the pitch or reduce the largest size.'});
+  else if(n&&web!=null&&web<t) out.push({id:'web',cls:'w',t:`Web is ${web.toFixed(2)} mm, thinner than the ${t} mm sheet. Laser and punch shops usually want web ≥ thickness.`});
+  if(n&&RES.sMin<t) out.push({id:'small',cls:'w',t:`Smallest hole (${RES.sMin.toFixed(2)} mm) is under the sheet thickness, which is hard to cut cleanly in metal.`});
+  if(n>15000) out.push({id:'big',cls:'w',t:'Large file. Some CAD tools slow down above about 15,000 entities.'});
+  if(S.wrap&&S.grads.some(g=>g.type==='linear'&&Math.abs((g.bu-g.au)*(S._dev?S._dev.Cm:S.W))>0.01)) out.push({id:'seamlin',cls:'w',t:'A linear gradient that does not run straight along the part changes value across the seam, so hole sizes will jump there. Make it vertical (snap helps) or use radial gradients.'});
+  if(S.wrap&&S.grads.some(g=>g.type==='image')) out.push({id:'seamimg',cls:'w',t:'Image gradients only wrap cleanly if the image tiles left to right.'});
+  if(isCone()&&S.d2===0) out.push({id:'apex',cls:'w',t:'A pointed cone has no top opening. Holes near the tip are dropped because the rows get too short.'});
+  if(S.grads.some(g=>g.type==='image'&&!g._img)) out.push({id:'img',cls:'w',t:'An image gradient has no image yet. Choose one in its settings.'});
+  return out;
+}
+function renderAlerts(){
+  const box=$('#alerts'), list=currentAlerts();
+  // a dismissed alert reappears only after it clears and then comes back
+  const ids=new Set(list.map(a=>a.id)); [...dismissed].forEach(id=>{ if(!ids.has(id)) dismissed.delete(id); });
+  box.textContent='';
+  list.filter(a=>!dismissed.has(a.id)).forEach(a=>{
+    const d=document.createElement('div'); d.className='alert '+a.cls; d.setAttribute('role',a.cls==='bad'?'alert':'status');
+    const s=document.createElement('span'); s.textContent=a.t;
+    const x=document.createElement('button'); x.textContent='×'; x.setAttribute('aria-label','Dismiss'); x.title='Dismiss';
+    x.addEventListener('click',()=>{dismissed.add(a.id); renderAlerts();});
+    d.append(s,x); box.appendChild(d);
+  });
+}
+
+// ---------- dragging + snapping ----------
+let drag=null;
+function hit(X,Y){
+  let best=null, bd=16;
+  handlePts().forEach(h=>{const [sx,sy]=toScreen(...h.m); let d=Math.hypot(sx-X,sy-Y); if(h.i===active) d-=3; if(d<bd){bd=d;best=h;}});
+  return best;
+}
+cv.addEventListener('pointerdown',e=>{
+  const r=cv.getBoundingClientRect(), X=e.clientX-r.left, Y=e.clientY-r.top;
+  let h=hit(X,Y);
+  if(!h&&S.grads[active]&&S.grads[active].type==='radial') h={i:active,p:'c'};
+  if(!h) return;
+  drag={i:h.i,p:h.p};
+  if(active!==h.i){active=h.i; renderGrad();}
+  cv.setPointerCapture(e.pointerId); move(X,Y,e.shiftKey); e.preventDefault();
+});
+cv.addEventListener('pointermove',e=>{
+  const r=cv.getBoundingClientRect(), X=e.clientX-r.left, Y=e.clientY-r.top;
+  if(drag){ move(X,Y,e.shiftKey); return; }
+  cv.style.cursor=hit(X,Y)?'grab':(S.grads[active]&&S.grads[active].type==='radial'?'crosshair':'default');
+});
+const endDrag=()=>{ if(drag){drag=null; guides=[]; renderGrad(); draw(); custom(); commit();} };
+cv.addEventListener('pointerup',endDrag); cv.addEventListener('pointercancel',endDrag);
+
+// Snap works in (u, v): u runs around a wrapped part (or across a flat panel), v along it.
+function snapUV(x,y,otherUV,shift){
+  guides=[];
+  const DEG=Math.PI/180;
+  if(otherUV&&shift){
+    const o=UV(...otherUV), dx=x-o[0], dy=y-o[1], L=Math.hypot(dx,dy), st=15*DEG, a=Math.round(Math.atan2(dy,dx)/st)*st;
+    x=o[0]+L*Math.cos(a); y=o[1]+L*Math.sin(a);
+    return XYUV(x,y);
+  }
+  let [u0,v0]=XYUV(x,y);
+  if(!snapOn) return [u0,v0];
+  // tolerance: 9 screen px expressed in u and v at this spot
+  const d=S._dev, mmU=isCone()?d.phi*Math.hypot(x-d.ax,y-d.ay):S.W, mmV=isCone()?d.L:S.H;
+  const tu=9/(view.sc*Math.max(mmU,1e-6)), tv=9/(view.sc*mmV);
+  const us=[0.5], vs=[0,0.5,1];
+  if(!S.wrap) us.push(0,1);
+  if(otherUV){ us.unshift(otherUV[0]); vs.unshift(otherUV[1]); }        // lock along / around against the other end
+  S.grads.forEach((g,i)=>{ if(i===drag.i) return; if(g.type==='radial'){us.push(g.u);vs.push(g.v);} else if(g.type==='linear'){us.push(g.au,g.bu);vs.push(g.av,g.bv);} });
+  const du=(a,b)=>{ let q=a-b; if(S.wrap) q-=Math.round(q); return Math.abs(q); };
+  let su=null, sv=null;
+  us.forEach(c=>{ if(du(u0,c)<tu&&(su==null||du(u0,c)<du(u0,su))) su=c; });
+  vs.forEach(c=>{ if(Math.abs(v0-c)<tv&&(sv==null||Math.abs(v0-c)<Math.abs(v0-sv))) sv=c; });
+  if(su!=null){u0=su; guides.push({u:su});}
+  if(sv!=null){v0=sv; guides.push({v:sv});}
+  return [u0,v0];
+}
+function move(X,Y,shift){
+  const [x,y]=toModel(X,Y);
+  const g=S.grads[drag.i], cl=v=>Math.max(-0.5,Math.min(1.5,v)), wu=v=>S.wrap?((v%1)+1)%1:cl(v);
+  if(drag.p==='r'){
+    guides=[];
+    const c=UV(g.u,g.v); let rad=Math.hypot(x-c[0],y-c[1]); if(snapOn) rad=Math.round(rad);
+    g.r=Math.max(2,rad); if(radRef) radRef.sync();
+  } else {
+    const other=drag.p==='a'?[g.bu,g.bv]:drag.p==='b'?[g.au,g.av]:null;
+    const [uu,vv]=snapUV(x,y,other,shift);
+    if(drag.p==='c'){g.u=wu(uu); g.v=cl(vv);}
+    else if(drag.p==='a'){g.au=S.wrap?uu:cl(uu); g.av=cl(vv);}
+    else {g.bu=S.wrap?uu:cl(uu); g.bv=cl(vv);}
+  }
+  schedule();
+}
+const snapBtn=$('#snapBtn');
+snapBtn.addEventListener('click',()=>{ snapOn=!snapOn; snapBtn.setAttribute('aria-pressed',snapOn); snapBtn.textContent=snapOn?'Snap on':'Snap off'; });
+
+// ---------- 3D preview of the wrapped part ----------
+let view3d=false, T3=null, threeLoading=null, spin=true, raf3=0;
+const v3=$('#c3d');
+function loadThree(){
+  if(window.THREE) return Promise.resolve(true);
+  if(!threeLoading) threeLoading=new Promise(res=>{
+    const s=document.createElement('script'); s.src='https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
+    s.onload=()=>res(!!window.THREE); s.onerror=()=>res(false); document.head.appendChild(s);
+  });
+  return threeLoading;
+}
+function init3D(){
+  const THREE=window.THREE;
+  let renderer;
+  try{ renderer=new THREE.WebGLRenderer({canvas:v3,antialias:true,alpha:true}); }catch(_){ return null; }
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+  if('outputEncoding' in renderer) renderer.outputEncoding=THREE.sRGBEncoding;
+  const scene=new THREE.Scene(), camera=new THREE.PerspectiveCamera(32,1,1,20000);
+  scene.add(new THREE.HemisphereLight(0xffffff,0x3a4250,0.85));
+  const key=new THREE.DirectionalLight(0xffffff,0.95); key.position.set(1.2,1.6,2); scene.add(key);
+  const rim=new THREE.DirectionalLight(0xbfd0ff,0.35); rim.position.set(-2,0.5,-1.5); scene.add(rim);
+  const texCanvas=document.createElement('canvas'), tex=new THREE.CanvasTexture(texCanvas);
+  tex.wrapS=THREE.RepeatWrapping; tex.anisotropy=renderer.capabilities.getMaxAnisotropy();
+  if('encoding' in tex) tex.encoding=THREE.sRGBEncoding;
+  const mat=new THREE.MeshStandardMaterial({map:tex,alphaTest:0.5,side:THREE.DoubleSide,metalness:0.45,roughness:0.42});
+  const mesh=new THREE.Mesh(new THREE.BufferGeometry(),mat); mesh.rotation.y=Math.PI; // seam at the back
+  scene.add(mesh);
+  return {THREE,renderer,scene,camera,tex,texCanvas,mesh,mat,yaw:0.22,pitch:0.3,zoom:1,geoKey:''};
+}
+function build3D(){
+  if(!T3||!S._dev||!RES||RES.error) return;
+  const {THREE,mesh,tex,texCanvas}=T3, d=S._dev, inv=S.out==='holes';
+  const key=[d.rTop,d.rBot,d.Hax].join('|');
+  if(key!==T3.geoKey){
+    mesh.geometry.dispose();
+    mesh.geometry=new THREE.CylinderGeometry(d.rTop,d.rBot,d.Hax,256,1,true);
+    T3.geoKey=key; T3.size=Math.max(d.rTop,d.rBot)*2; T3.h=d.Hax;
+  }
+  // texture: u across, v up; part surface opaque, holes transparent (or the reverse in holes-only mode)
+  const Tw=2048, Th=Math.max(128,Math.min(2048,Math.round(Tw*d.L/d.Cm)));
+  texCanvas.width=Tw; texCanvas.height=Th;
+  const x=texCanvas.getContext('2d'), sheet=col('--sheet')||'#b8c0c9';
+  x.clearRect(0,0,Tw,Th);
+  if(!inv){ x.fillStyle=sheet; x.fillRect(0,0,Tw,Th); x.globalCompositeOperation='destination-out'; }
+  else x.fillStyle=sheet;
+  x.beginPath();
+  for(const loop of Core.outlines(RES)){
+    loop.forEach((p,k)=>{ const [uu,vv]=Core.xyToUV(S,p[0],p[1]); const X=uu*Tw, Y=(1-vv)*Th; k?x.lineTo(X,Y):x.moveTo(X,Y); });
+    x.closePath();
+  }
+  x.fill('nonzero'); x.globalCompositeOperation='source-over';
+  tex.needsUpdate=true;
+  T3.mat.color.set(0xffffff);
+  draw3D();
+}
+function draw3D(){
+  if(!T3||!view3d) return;
+  const {renderer,scene,camera}=T3, r=v3.getBoundingClientRect();
+  if(!r.width||!r.height) return;
+  renderer.setSize(r.width,r.height,false); camera.aspect=r.width/r.height;
+  const span=Math.max(T3.size||100,T3.h||100), dist=span*1.9*T3.zoom/Math.tan(camera.fov*Math.PI/360)/2;
+  camera.position.set(dist*Math.sin(T3.yaw)*Math.cos(T3.pitch), dist*Math.sin(T3.pitch), dist*Math.cos(T3.yaw)*Math.cos(T3.pitch));
+  camera.near=dist/50; camera.far=dist*10; camera.lookAt(0,0,0); camera.updateProjectionMatrix();
+  renderer.render(scene,camera);
+}
+function loop3D(){
+  raf3=0;
+  if(!view3d) return;
+  if(spin&&!matchMedia('(prefers-reduced-motion: reduce)').matches){ T3.yaw+=0.004; draw3D(); raf3=requestAnimationFrame(loop3D); }
+}
+async function setView(on){
+  view3d=on;
+  $('#vFlat').setAttribute('aria-pressed',!on); $('#v3d').setAttribute('aria-pressed',on);
+  v3.hidden=!on; cv.hidden=on; $('#snapBtn').hidden=on;
+  if(!on){ cancelAnimationFrame(raf3); raf3=0; draw(); return; }
+  $('#chip').textContent='Loading 3D…';
+  const ok=await loadThree();
+  if(!ok){ toast('The 3D library could not load here. The flat view still works.'); setView(false); return; }
+  if(!T3) T3=init3D();
+  if(!T3){ toast('This browser could not start 3D graphics (WebGL). The flat view still works.'); setView(false); return; }
+  $('#chip').textContent='Drag to orbit · scroll to zoom · seam is at the back';
+  T3.geoKey=''; build3D();
+  if(!raf3) raf3=requestAnimationFrame(loop3D);
+}
+$('#vFlat').addEventListener('click',()=>setView(false));
+$('#v3d').addEventListener('click',()=>setView(true));
+let orbit=null;
+v3.addEventListener('pointerdown',e=>{ orbit={x:e.clientX,y:e.clientY,yaw:T3?T3.yaw:0,pitch:T3?T3.pitch:0}; spin=false; v3.setPointerCapture(e.pointerId); });
+v3.addEventListener('pointermove',e=>{ if(!orbit||!T3) return; T3.yaw=orbit.yaw-(e.clientX-orbit.x)*0.008; T3.pitch=Math.max(-1.3,Math.min(1.3,orbit.pitch+(e.clientY-orbit.y)*0.008)); draw3D(); });
+v3.addEventListener('pointerup',()=>{orbit=null;}); v3.addEventListener('pointercancel',()=>{orbit=null;});
+v3.addEventListener('wheel',e=>{ if(!T3) return; e.preventDefault(); T3.zoom=Math.max(0.35,Math.min(3,T3.zoom*Math.exp(e.deltaY*0.0012))); spin=false; draw3D(); },{passive:false});
+v3.addEventListener('dblclick',()=>{ spin=!spin; if(spin&&!raf3) raf3=requestAnimationFrame(loop3D); });
+
+// ---------- plate / holes-only toggle ----------
+function modeUI(){ $('#mPlate').setAttribute('aria-pressed',S.out!=='holes'); $('#mHoles').setAttribute('aria-pressed',S.out==='holes'); }
+function setMode(m){ S.out=m; modeUI(); syncControls(); schedule(); commit(); }
+$('#mPlate').addEventListener('click',()=>setMode('plate'));
+$('#mHoles').addEventListener('click',()=>setMode('holes'));
+
+// ---------- presets ----------
+const presetSel=$('#preset');
+function custom(){ presetSel.value='custom'; }
+function buildPresets(){
+  PRESETS.forEach((p,i)=>{const o=document.createElement('option'); o.value=i; o.textContent=p.name; presetSel.appendChild(o);});
+  const c=document.createElement('option'); c.value='custom'; c.textContent='Custom'; c.hidden=true; presetSel.appendChild(c);
+  presetSel.addEventListener('change',()=>{ if(presetSel.value==='custom') return; S=clone(Object.assign({},DEF,PRESETS[+presetSel.value].s,{out:S.out})); active=0; dismissed.clear(); Core.normalize(S); setBaseline(); renderGrad(); syncControls(); schedule(); commit(); });
+  $('#side').addEventListener('input',e=>{ if(e.target.type!=='file') custom(); });
+  $('#side').addEventListener('change',e=>{ if(e.target.type!=='file') custom(); });
+  cv.addEventListener('pointerup',()=>custom());
+}
+
+// ---------- export ----------
+const inViewer=!!(window.claude&&typeof window.claude.use==='function');
+const dlPromise=inViewer?window.claude.use('downloads').catch(()=>null):Promise.resolve(null);
+if(inViewer){ $('#bDXF').textContent='Export DXF (.zip)'; $('#bDXF').title='This viewer can only save certain file types, so the .dxf is delivered inside a zip.'; }
+const baseName=()=>`perforation-${isCone()?`cone-D${S.d1}-D${S.d2}-H${S.axH}-`:S.wrap?'wrap-D'+S.cylD+'-':''}${S.layout}-${S.shape}-${+S.W.toFixed(1)}x${+S.H.toFixed(1)}mm${S.out==='holes'?'-holes-only':''}`;
+function localDownload(name,text,type){
+  const url=URL.createObjectURL(new Blob([text],{type})), a=document.createElement('a');
+  a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),4000);
+}
+function explain(e){
+  const c=e&&e.code;
+  if(c==='declined') return 'Save cancelled.';
+  if(c==='rate_limited') return 'A save prompt is already open. Finish that one first.';
+  if(c==='rejected_extension'||c==='extension_not_enabled') return 'This viewer will not save that file type. Use Copy DXF and paste into a .dxf file.';
+  return 'Saving is not available in this view. Use Copy DXF instead.';
+}
+function ready(){ if(!RES||RES.error||!RES.holes.length){ toast('Nothing to export yet. Get at least one hole on the sheet.'); return false;} return true; }
+$('#bDXF').addEventListener('click',async()=>{
+  if(!ready()) return;
+  const name=baseName()+'.dxf', dxf=Core.toDXF(S,RES);
+  if(APP){ const r=await APP.save({kind:'dxf',data:dxf,defaultName:name}); if(r.canceled) return; if(r.error){toast(r.error);return;} toast(`Exported ${r.name} (${RES.holes.length.toLocaleString()} holes${S.out==='holes'?', no outline':''}).`); return; }
+  if(!inViewer){ localDownload(name,dxf,'application/dxf'); toast(`Saved ${name} (${RES.holes.length.toLocaleString()} holes${S.out==='holes'?', no outline':''}).`); return; }
+  const dl=await dlPromise;
+  if(!dl){ toast('Saving is not available in this view. Use Copy DXF instead.'); return; }
+  if(typeof JSZip==='undefined'){ toast('The zip library did not load. Use Copy DXF instead.'); return; }
+  try{
+    const zip=new JSZip(); zip.file(name,dxf);
+    const blob=await zip.generateAsync({type:'blob',compression:'DEFLATE'});
+    await dl.save({filename:baseName()+'.zip',data:blob});
+    toast(`Saved. Unzip to get ${name}.`);
+  }catch(e){ toast(explain(e)); }
+});
+$('#bSVG').addEventListener('click',async()=>{
+  if(!ready()) return;
+  const name=baseName()+'.svg', svg=Core.toSVG(S,RES);
+  if(APP){ const r=await APP.save({kind:'svg',data:svg,defaultName:name}); if(r.canceled) return; if(r.error){toast(r.error);return;} toast('Exported '+r.name+'.'); return; }
+  if(!inViewer){ localDownload(name,svg,'image/svg+xml'); toast('Saved '+name+'.'); return; }
+  const dl=await dlPromise;
+  if(!dl){ toast('Saving is not available in this view.'); return; }
+  try{ await dl.save({filename:name,data:svg}); toast('Saved '+name+'.'); }catch(e){ toast(explain(e)); }
+});
+$('#bCopy').addEventListener('click',()=>{
+  if(!ready()) return;
+  const dxf=Core.toDXF(S,RES), msg='DXF copied. Paste it into a plain text file and save it with a .dxf extension.';
+  const fallback=()=>{ const t=document.createElement('textarea'); t.value=dxf; t.style.position='fixed'; t.style.opacity='0'; document.body.appendChild(t); t.select();
+    let ok=false; try{ok=document.execCommand('copy');}catch(_){} t.remove(); toast(ok?msg:'Copy was blocked by this view. Use Export DXF instead.'); };
+  try{ navigator.clipboard.writeText(dxf).then(()=>toast(msg),fallback); }catch(_){ fallback(); }
+});
+
+let tt=0;
+function toast(m){ const t=$('#toast'); t.textContent=m; t.hidden=false; clearTimeout(tt); tt=setTimeout(()=>{t.hidden=true;},4200); }
+
+// ---------- Mac app: design files and menu commands ----------
+let docPath=null, docName=null, savedStr='';
+function updDoc(){
+  if(!APP) return;
+  const dirty=snapStr()!==savedStr, nm=docName?docName.replace(/\.perf$/i,''):'Untitled';
+  APP.setDirty(dirty); APP.setTitle(nm+(dirty?' (edited)':'')+' — Perforation Studio');
+  const el=$('#docName'); el.textContent=''; const b=document.createElement('b'); b.textContent=nm; el.append(b, dirty?' · Edited':'');
+}
+function serialize(){
+  const st=JSON.parse(snapStr());
+  st.grads.forEach(g=>{
+    const im=imgs[g.id];
+    if(g.type!=='image'||!im) return;
+    const s=Math.min(1,1024/Math.max(im.naturalWidth||im.width,im.naturalHeight||im.height)), c=document.createElement('canvas');
+    c.width=Math.max(1,Math.round((im.naturalWidth||im.width)*s)); c.height=Math.max(1,Math.round((im.naturalHeight||im.height)*s));
+    c.getContext('2d').drawImage(im,0,0,c.width,c.height); g.imgData=c.toDataURL('image/jpeg',0.9);
+  });
+  return JSON.stringify({app:'perforation-studio',version:1,saved:new Date().toISOString(),state:st},null,1);
+}
+function resetHistory(){ hist=[]; hidx=-1; setBaseline(); commit(); updUndo(); }
+function loadDesign(f){
+  let o=null; try{ o=JSON.parse(f.data); }catch(_){}
+  if(!o||o.app!=='perforation-studio'||!o.state||typeof o.state!=='object'){ toast(`${f.name} is not a Perforation Studio design.`); return; }
+  S=clone(Object.assign({},DEF,o.state)); if(!Array.isArray(S.grads)) S.grads=[];
+  S.grads.forEach(g=>{
+    const data=g.imgData; delete g.imgData;
+    const n=+(String(g.id||'').replace(/\D/g,''))||0; if(n>gid) gid=n;
+    if(typeof data==='string'&&data.startsWith('data:image/')){
+      const im=new Image();
+      im.onload=()=>{ imgs[g.id]=im; const live=S.grads.find(x=>x.id===g.id); if(live){ live._img=im; live._sampler=null; } renderGrad(); schedule(); };
+      im.src=data;
+    }
+  });
+  active=0; dismissed.clear(); Core.normalize(S); resetHistory();
+  modeUI(); renderGrad(); syncControls(); schedule(); presetSel.value='custom';
+  docPath=f.path; docName=f.name; savedStr=snapStr(); APP.setRepresented(f.path); updDoc();
+  toast('Opened '+f.name+'.');
+}
+async function saveDesign(asNew){
+  const r=await APP.save({kind:'perf',data:serialize(),defaultName:docName||'Untitled design.perf',path:asNew?null:docPath});
+  if(r.canceled) return false;
+  if(r.error){ toast(r.error); return false; }
+  docPath=r.path; docName=r.name; savedStr=snapStr(); APP.setRepresented(r.path); updDoc(); toast('Saved '+r.name+'.');
+  return true;
+}
+async function okToReplace(){
+  const a=await APP.confirmDiscard();
+  if(a==='cancel') return false;
+  if(a==='save') return await saveDesign(false);
+  return true;
+}
+const isField=()=>{ const t=document.activeElement; return !!t&&(t.tagName==='TEXTAREA'||(t.tagName==='INPUT'&&!['checkbox','range','file','button'].includes(t.type))); };
+if(APP){
+  $('#tagline').hidden=true; $('#docName').hidden=false;
+  onHist=updDoc;
+  APP.onCommand(async(cmd,p)=>{
+    switch(cmd){
+      case 'undo': if(isField()) document.execCommand('undo'); else undo(); break;
+      case 'redo': if(isField()) document.execCommand('redo'); else redo(); break;
+      case 'save': await saveDesign(false); break;
+      case 'save-as': await saveDesign(true); break;
+      case 'save-and-close': if(await saveDesign(false)) APP.savedAndClose(); break;
+      case 'open': { if(!(await okToReplace())) break; const f=await APP.open(); if(f.canceled) break; if(f.error){ toast(f.error); break; } loadDesign(f); break; }
+      case 'load': if(await okToReplace()) loadDesign(p); break;
+      case 'new': {
+        if(!(await okToReplace())) break;
+        S=clone(Object.assign({},DEF,PRESETS[0].s)); active=0; dismissed.clear(); Core.normalize(S); resetHistory();
+        modeUI(); renderGrad(); syncControls(); schedule(); presetSel.value='0';
+        docPath=null; docName=null; savedStr=snapStr(); updDoc(); if(view3d) setView(false);
+        break;
+      }
+      case 'export-dxf': $('#bDXF').click(); break;
+      case 'export-svg': $('#bSVG').click(); break;
+      case 'copy-dxf': $('#bCopy').click(); break;
+      case 'view-flat': if(view3d) setView(false); break;
+      case 'view-3d': if(S.wrap) setView(true); else toast('Turn on “Wrap around a cylinder” to see the part in 3D.'); break;
+      case 'mode-plate': setMode('plate'); break;
+      case 'mode-holes': setMode('holes'); break;
+      case 'snap': snapBtn.click(); toast(snapOn?'Snapping on.':'Snapping off.'); break;
+      case 'error': toast(String(p)); break;
+    }
+  });
+}
+
+// ---------- boot ----------
+buildControls(); buildPresets(); Core.normalize(S); setBaseline(); commit(); renderGrad(); syncControls(); run();
+$('#bUndo').addEventListener('click',undo); $('#bRedo').addEventListener('click',redo);
+if(APP){ savedStr=snapStr(); updDoc(); APP.ready(); }
+let inputTimer=0;
+$('#side').addEventListener('change',()=>{ clearTimeout(inputTimer); commit(); });
+$('#side').addEventListener('input',()=>{ clearTimeout(inputTimer); inputTimer=setTimeout(commit,700); });
+document.addEventListener('keydown',e=>{
+  if(APP||!(e.metaKey||e.ctrlKey)) return; // in the Mac app the Edit menu handles these
+  const t=e.target, k=e.key.toLowerCase();
+  if(t&&t.tagName==='INPUT'&&t.type==='number') return; // let the field undo its own typing
+  if(k==='z'&&!e.shiftKey){ e.preventDefault(); undo(); }
+  else if((k==='z'&&e.shiftKey)||k==='y'){ e.preventDefault(); redo(); }
+});
+new ResizeObserver(()=>{ draw(); draw3D(); }).observe($('#cwrap'));
+try{ matchMedia('(prefers-color-scheme: dark)').addEventListener('change',draw); }catch(_){}
+new MutationObserver(draw).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+})();
+</script>
